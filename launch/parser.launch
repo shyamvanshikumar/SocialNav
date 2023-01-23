@@ -1,0 +1,13 @@
+<launch>
+
+    <arg name="rosbag_path" default="None" />
+    <arg name="save_data_path" default="/catkin_ws/data" />
+    <arg name="config_path" default="/catkin_ws/config.yaml" />
+
+    <!--    data parser node -->
+    <param name="rosbag_path" type="str" value="$(arg rosbag_path)" />
+    <param name="save_data_path" type="str" value="$(arg save_data_path)" />
+    <param name="config_path" type="str" value="$(arg config_path)" />
+    <node name="rosbag_parser" pkg="rosbag_parser" type="process_rosbag.py" output="screen" required="true"/>
+
+</launch>
