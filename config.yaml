@@ -1,0 +1,9 @@
+robot_name: "spot"
+
+### lidar range configuration params ###
+LIDAR_SIDE_RANGE: 6.0
+LIDAR_FRONT_RANGE: 8.0
+LIDAR_BACK_RANGE: 4.0
+LIDAR_TOP_RANGE: 5.0
+LIDAR_BOTTOM_RANGE: 1.0
+RESOLUTION: 0.05

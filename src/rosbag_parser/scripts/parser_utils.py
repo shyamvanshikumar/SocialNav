@@ -13,7 +13,7 @@ class BEVLidar:
         self.y_range = y_range
         self.z_range = z_range
         self.resolution = resolution
-        self.dx = x_range[1]/resolution
+        self.dx = -x_range[0]/resolution
         self.dy = y_range[1]/resolution
         self.img_size = int(1 + (x_range[1] - x_range[0]) / resolution)
         self.threshold_z_range = threshold_z_range
@@ -28,8 +28,8 @@ class BEVLidar:
             if self.threshold_z_range:
                 img[int(round(iy)), int(round(ix))] = 1 if z >= self.z_range[0] else 0
             else:
-                img[int(round(iy)), int(round(ix))] = (((z-self.z_range[0])/float(self.z_range[1]-self.z_range[0])) * 255).astype(np.uint8)
-        return img
+                img[int(round(iy)), int(round(ix))] = ((z-self.z_range[0])/float(self.z_range[1]-self.z_range[0])) * 255
+        return img.astype(np.uint8)
 
     def not_in_range_check(self, x, y, z):
         if x < self.x_range[0] \

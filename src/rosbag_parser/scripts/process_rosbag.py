@@ -36,13 +36,14 @@ class ParseBag:
         print(self.config)
 
         self.pose_data = {'pose_future': [], 'pose_history': []}
+        self.sync_odoms = []
         self.lidar_imgs = []
         self.rgb_imgs = []
 
         # lidar data handler
-        self.bevlidar_handler = BEVLidar(x_range=(-self.config['LIDAR_RANGE_METERS'], self.config['LIDAR_RANGE_METERS']),
-                                         y_range=(-self.config['LIDAR_RANGE_METERS'], self.config['LIDAR_RANGE_METERS']),
-                                         z_range=(-self.config['LIDAR_HEIGHT_METERS'], self.config['LIDAR_HEIGHT_METERS']),
+        self.bevlidar_handler = BEVLidar(x_range=(-self.config['LIDAR_BACK_RANGE'], self.config['LIDAR_FRONT_RANGE']),
+                                         y_range=(-self.config['LIDAR_SIDE_RANGE'], self.config['LIDAR_SIDE_RANGE']),
+                                         z_range=(-self.config['LIDAR_BOTTOM_RANGE'], self.config['LIDAR_TOP_RANGE']),
                                          resolution=self.config['RESOLUTION'], threshold_z_range=False)
         
     def callback(self, lidar_sync, rgb_img_sync, odom_sync):
@@ -60,6 +61,8 @@ class ParseBag:
         pose_history = self.convert_odom_to_pose(self.odom_msgs[odom_past_index:odom_closest_index])
         self.pose_data['pose_future'].append(pose_future)
         self.pose_data['pose_history'].append(pose_history)
+
+        self.sync_odoms.append(odom_sync)
         
         # process lidar pointcloud to get bev
         lidar_points = pc2.read_points(
@@ -68,9 +71,9 @@ class ParseBag:
         self.lidar_imgs.append(bev_lidar_image)
 
         # rgb_img
-        self.rgb_imgs.append(rgb_img_sync)
+        self.rgb_imgs.append(rgb_img_sync.data)
 
-    def convert_odom_to_pose(odoms):
+    def convert_odom_to_pose(self, odoms):
         tmp = []
         for odom in odoms:
             tmp.append([odom.pose.pose.position.x, odom.pose.pose.position.y,
@@ -80,10 +83,11 @@ class ParseBag:
 
     def save_data(self, rosbag_path, save_data_path):
 
-        pose_path = os.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_pose.pkl'))
-        lidar_dir = os.join(save_data_path, rosbag_path.split('/').replace('.bag','_lidar_bev'))
-        img_dir = os.join(save_data_path, rosbag_path.split('/').replace('.bag','_rgb_img'))
+        pose_path = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_pose.pkl'))
+        lidar_dir = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_lidar_bev'))
+        img_dir = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_rgb_img'))
 
+        self.pose_data['pose_sync'] = self.convert_odom_to_pose(self.sync_odoms)
         print('Saving pose to: ', pose_path)
         pickle.dump(self.pose_data, open(pose_path, 'wb'))
 
@@ -92,7 +96,7 @@ class ParseBag:
             os.makedirs(lidar_dir)
         
         for i, lidar_img in enumerate(self.lidar_imgs):
-            file_path = os.path.join(lidar_dir, f'bev{i}.png')
+            file_path = os.path.join(lidar_dir, f'{i}.png')
             if not cv2.imwrite(file_path, lidar_img):
                 raise Exception('Could not write image')
             print("saved to ", file_path)
@@ -103,8 +107,10 @@ class ParseBag:
             os.makedirs(img_dir)
         
         for i, rgb_img in enumerate(self.rgb_imgs):
-            file_path = os.path.join(img_dir, f'img{i}.png')
-            if not cv2.imwrite(file_path, rgb_img):
+            file_path = os.path.join(img_dir, f'{i}.png')
+            a = np.frombuffer(rgb_img, np.uint8)
+            mat = cv2.imdecode(a, cv2.IMREAD_COLOR)
+            if not cv2.imwrite(file_path, mat):
                 raise Exception('Could not write image')
             print("saved to ", file_path)
 

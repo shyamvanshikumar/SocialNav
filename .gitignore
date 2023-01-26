@@ -1,5 +1,8 @@
 .catkin_tools
 .catkin_workspace
+.ipynb_checkpoints/
+__pycache__/
+src/rosbag_parser/scripts/__pycache__/
 build
 devel
 logs
