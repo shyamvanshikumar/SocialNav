@@ -21,10 +21,10 @@ class AttnNav(nn.Module):
         
         self.decoder = decoder
 
-    def forward(self, rgb_img, lidar_img, trg_seq):
+    def forward(self, rgb_img, lidar_img, trg_pose_seq):
         rgb_enc_out = self.rgb_encoder(rgb_img)
         lidar_enc_out = self.lidar_encoder(lidar_img)
 
         enc_output = torch.cat([rgb_enc_out, lidar_enc_out], dim=1)
-        dec_output = self.decoder(enc_output, trg_seq)
+        dec_output = self.decoder(enc_output, trg_pose_seq)
         return dec_output
