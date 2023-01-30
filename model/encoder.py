@@ -3,7 +3,7 @@ import warnings
 
 import torch
 from torch import nn, Tensor
-from utils import EncAttnBlock, trunc_normal_
+from .utils import EncAttnBlock, trunc_normal_
 
 # Vision Transformer referenced from timm library, and Facebook DINO with some modifications
 
@@ -103,7 +103,7 @@ class VisionTransformer(nn.Module):
 
         # Classifier head
         self.head = nn.Linear(embed_dim,
-                              embed_dim/2)
+                              embed_dim//2)
 
         trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.cls_token, std=.02)

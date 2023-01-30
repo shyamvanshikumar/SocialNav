@@ -1,3 +1,7 @@
 notebook
 tqdm
 bagpy
+torch
+torchvision
+scipy
+termcolor

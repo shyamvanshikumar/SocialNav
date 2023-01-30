@@ -3,7 +3,8 @@ import warnings
 
 import torch
 from torch import nn, Tensor
-from utils import DecAttnBlock, trunc_normal_
+import numpy as np
+from .utils import DecAttnBlock, trunc_normal_
 
 class PositionalEncoding(nn.Module):
 
@@ -81,7 +82,9 @@ class TransformerDecoder(nn.Module):
             nn.init.constant_(m.weight, 1.0)
     
     def forward(self, enc_output, dec_input):
-        x = self.pos_embed(self.linear_in_emb(dec_input))
+        #print(dec_input.dtype)
+        x = self.linear_in_emb(dec_input)
+        x = self.pos_embed(x)
         x = self.pos_drop(x)
 
         for blk in self.blocks:

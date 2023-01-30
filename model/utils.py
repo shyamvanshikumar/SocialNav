@@ -124,7 +124,9 @@ class CrossAttn(nn.Module):
         B, N, C = x.shape
         q = self.q(x).reshape(B, N, 1, self.num_heads,
                                   C // self.num_heads).permute(2, 0, 3, 1, 4).squeeze()
-        kv = self.kv(y).reshape(B, N, 2, self.num_head, C // self.num_head).permute(2,0,3,1,4)
+        
+        B, M, C = y.shape
+        kv = self.kv(y).reshape(B, M, 2, self.num_heads, C // self.num_heads).permute(2,0,3,1,4)
         k, v = kv[0], kv[1]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
