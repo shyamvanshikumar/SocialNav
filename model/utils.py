@@ -87,7 +87,7 @@ class SelfAttn(nn.Module):
         attn = (q @ k.transpose(-2, -1)) * self.scale
         
         if self.mask:
-            mask = torch.tril(torch.ones(attn.shape[-2], attn.shape[-1]))
+            mask = torch.tril(torch.ones((attn.shape[-2], attn.shape[-1]), device=x.device))
             attn = attn.masked_fill(mask == 0, -1e9)
 
         attn = attn.softmax(dim=-1)

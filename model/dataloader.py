@@ -6,8 +6,9 @@ from PIL import Image
 from scipy.spatial.transform import Rotation as R
 import torch
 from torch import nn, Tensor
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from torchvision import transforms
+import pytorch_lightning as pl
 
 def get_affine_matrix_quat(x, y, quaternion):
     theta = R.from_quat(quaternion).as_euler('XYZ')[2]
@@ -24,9 +25,7 @@ class NavSet(Dataset):
                  rosbag_path: str,
                  lidar_img_size = 240,
                  rgb_img_size = 240, 
-                 pose_len=30,
-                 is_train=True,
-                 val_ratio=0.2) -> None:
+                 pose_len=30) -> None:
         """ initialize a NavSet object,
             save path to data but do not load into RAM
         Args:
@@ -40,7 +39,6 @@ class NavSet(Dataset):
         self.lidar_dir = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_lidar_bev'))
         self.img_dir = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_rgb_img'))
 
-        self.is_train = is_train
         self.pose_data_points = pickle.load(open(self.pose_path, 'rb'))
 
         self.lidar_transforms = transforms.Compose([
@@ -55,11 +53,7 @@ class NavSet(Dataset):
             transforms.ConvertImageDtype(torch.float),
         ])
 
-        self.val_start = int(len(os.listdir(self.lidar_dir))*(1-val_ratio))
-        if is_train:
-            self.length = self.val_start
-        else:
-            self.length = len(os.listdir(self.lidar_dir)) - self.val_start
+        self.length = len(os.listdir(self.lidar_dir))
 
     def __len__(self) -> int:
         """ return the length of the of dataset
@@ -67,8 +61,6 @@ class NavSet(Dataset):
         return self.length
 
     def __getitem__(self, index):
-        if self.is_train == False:
-            index += self.val_start
         rgb_img = Image.open(os.path.join(self.img_dir, f'{index}.png'))
         rgb_img = self.rgb_transforms(rgb_img)
 
@@ -88,5 +80,64 @@ class NavSet(Dataset):
 
         return rgb_img, lidar_img, goal_tensor
 
+class NavSetDataModule(pl.LightningDataModule):
 
+    def __init__(self,
+                 save_data_path: str,
+                 train_rosbag_path: str,
+                 val_rosbag_path: str,
+                 batch_size=16,
+                 num_workers=8,
+                 pin_memory=False,
+                 use_weighted_sampling=False,
+                 verbose=False):
+        
+        super().__init__()
+        self.save_data_path = save_data_path
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.pin_memory = pin_memory
+        self.use_weighted_sampling = use_weighted_sampling
+        self.verbose = verbose
+
+        self.train_bags = [b for b in os.listdir(train_rosbag_path) if os.path.isfile(os.path.join(train_rosbag_path,b))]
+        print(len(self.train_bags))
+        self.val_bags = [b for b in os.listdir(val_rosbag_path) if os.path.isfile(os.path.join(val_rosbag_path,b))]
+        print(len(self.val_bags))
+
+    def _concatenate_dataset(self, bag_list):
+        tmp_sets = []
+        for b in bag_list:
+            tmp = NavSet(self.save_data_path, b)
+            tmp_sets.append(tmp)
+        return ConcatDataset(tmp_sets)
+    
+    def setup(self, stage):
+
+        if stage in (None, "fit"):
+            self.train_set = self._concatenate_dataset(self.train_bags)
+            self.val_set = self._concatenate_dataset(self.val_bags)
+        
+        if stage == "validate":
+            self.val_set = self._concatenate_dataset(self.val_bags)
+    
+    def train_dataloader(self) -> DataLoader:
+        """ return the training dataloader
+        """
+        return DataLoader(dataset=self.train_set,
+                          batch_size=self.batch_size,
+                          shuffle=True,
+                          num_workers=self.num_workers,
+                          pin_memory=self.pin_memory,
+                          drop_last=True)
+
+    def val_dataloader(self) -> DataLoader:
+        """ return validation dataloader
+        """
+        return DataLoader(dataset=self.val_set,
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers,
+                          pin_memory=self.pin_memory,
+                          drop_last=True)    
 
