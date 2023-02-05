@@ -4,6 +4,7 @@
 __pycache__/
 src/rosbag_parser/scripts/__pycache__/
 lightning_logs/
+trained_models/
 build
 devel
 logs

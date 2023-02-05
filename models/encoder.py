@@ -3,7 +3,7 @@ import warnings
 
 import torch
 from torch import nn, Tensor
-from .utils import EncAttnBlock, trunc_normal_
+from models.utils import EncAttnBlock, trunc_normal_
 
 # Vision Transformer referenced from timm library, and Facebook DINO with some modifications
 
