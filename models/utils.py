@@ -89,6 +89,8 @@ class SelfAttn(nn.Module):
         if self.mask:
             mask = torch.tril(torch.ones((attn.shape[-2], attn.shape[-1]), device=x.device))
             attn = attn.masked_fill(mask == 0, -1e9)
+            del mask
+            torch.cuda.empty_cache()
 
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)

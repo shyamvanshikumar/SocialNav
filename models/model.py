@@ -3,25 +3,21 @@ import warnings
 
 import torch
 from torch import nn, Tensor
+
 import pytorch_lightning as pl
 
+from train import config as CFG
 from models.encoder import VisionTransformer
 from models.decoder import TransformerDecoder
 
 class AttnNav(pl.LightningModule):
     def __init__(self,
-                 img_size=240,
-                 patch_size=8,
-                 embed_dim=256,
-                 depth=6,
-                 num_heads=8,
-                 mlp_ratio=4.,
-                 qkv_bias=False,
-                 qk_scale=None,
-                 drop_rate=0.,
-                 attn_drop_rate=0.,
-                 drop_path_rate=0.,
-                 norm_layer=nn.LayerNorm,
+                 rgb_encoder,
+                 lidar_encoder,
+                 rob_traj_decoder,
+                 mot_decoder=None,
+                 only_rob=True,
+                 only_mot=False,
                  optimizer="AdamW",
                  lr=0.001,
                  weight_decay=0.01,
@@ -29,42 +25,13 @@ class AttnNav(pl.LightningModule):
 
         super().__init__()
         
-        self.rgb_encoder = VisionTransformer(img_size=img_size,
-                                            patch_size=patch_size,
-                                            input_channels=3,
-                                            embed_dim=embed_dim,
-                                            depth=depth,
-                                            num_heads=num_heads,
-                                            mlp_ratio=mlp_ratio,
-                                            qkv_bias=qkv_bias,
-                                            qk_scale=qk_scale,
-                                            drop_rate=drop_rate,
-                                            attn_drop_rate=attn_drop_rate,
-                                            drop_path_rate=drop_path_rate,
-                                            norm_layer=norm_layer)
-        self.lidar_encoder = VisionTransformer(img_size=img_size,
-                                            patch_size=patch_size,
-                                            input_channels=1,
-                                            embed_dim=embed_dim,
-                                            depth=depth,
-                                            num_heads=num_heads,
-                                            mlp_ratio=mlp_ratio,
-                                            qkv_bias=qkv_bias,
-                                            qk_scale=qk_scale,
-                                            drop_rate=drop_rate,
-                                            attn_drop_rate=attn_drop_rate,
-                                            drop_path_rate=drop_path_rate,
-                                            norm_layer=norm_layer)
-        self.decoder = TransformerDecoder(embed_dim=embed_dim,
-                                          depth=depth,
-                                          num_heads=num_heads,
-                                          mlp_ratio=mlp_ratio,
-                                          qkv_bias=qkv_bias,
-                                          qk_scale=qk_scale,
-                                          drop_rate=drop_rate,
-                                          attn_drop_rate=attn_drop_rate,
-                                          drop_path_rate=drop_path_rate,
-                                          norm_layer=norm_layer)
+        self.rgb_encoder = rgb_encoder
+        self.lidar_encoder = lidar_encoder
+        self.decoder = rob_traj_decoder
+        self.mot_decoder = mot_decoder
+
+        self.only_mot = only_mot
+        self.only_rob = only_rob
 
         self.criterion = nn.MSELoss(reduction='sum')
         self.optimizer = optimizer
@@ -88,7 +55,7 @@ class AttnNav(pl.LightningModule):
         dec_output = self.forward(image, lidar, pose)
         loss = self.criterion(dec_output, pose)
         #print("\n ++ ",loss, "++\n")
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log("train_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -96,7 +63,7 @@ class AttnNav(pl.LightningModule):
         dec_output = self.forward(image, lidar, pose)
         loss = self.criterion(dec_output, pose)
         #print("val",batch_idx, loss)
-        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log("val_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
 
     def configure_optimizers(self):
         if self.optimizer == "Adam":
@@ -107,5 +74,7 @@ class AttnNav(pl.LightningModule):
             optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, weight_decay=self.weight_decay, momentum=self.momentum)
         else:
             raise ValueError("Invalid name of optimizer")
-        return optimizer
+        lambda1 = lambda epoch: (1-epoch/CFG.epochs)**0.9
+        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda1)
+        return [optimizer], [lr_scheduler]
     

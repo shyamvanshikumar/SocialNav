@@ -1,0 +1,48 @@
+model:
+  img_size: 240
+  patch_size: 8
+  embed_dim: 256
+  depth: 6
+  num_heads: 8
+  drop_rate: 0.1
+  attn_drop_rate: 0.1
+  drop_path_rate: 0.1
+  lr: 0.0005
+  optimizer: AdamW
+  weight_decay: 0.02
+
+data:
+  save_data_path: /workspace/project/data/
+  train_rosbag_path: /workspace/project/data/train_bags/
+  val_rosbag_path: /workspace/project/data/val_bags/
+  batch_size: 6
+  num_workers: 8
+  pin_memory: true
+
+trainer:
+  accelerator: gpu
+  devices: 3
+  strategy: ddp
+  logger: 
+    - class_path: pytorch_lightning.loggers.TensorBoardLogger
+      init_args:
+        save_dir: logs/
+  max_epochs: 12
+  log_every_n_steps: 20
+  gradient_clip_val: 1.0
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.EarlyStopping
+      init_args:
+        monitor: val_loss
+        mode: min
+        min_delta: 0.00
+        patience: 10
+    - class_path: pytorch_lightning.callbacks.StochasticWeightAveraging
+      init_args: 
+        swa_lrs: 0.01
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: trained_models/
+        filename=datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
+        monitor: val_loss
+        mode: min

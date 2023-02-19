@@ -20,14 +20,42 @@ model_checkpoint_cb = ModelCheckpoint(
     monitor='val_loss',
     mode='min')
 
-model = AttnNav(img_size=CFG.img_size,
-                patch_size=CFG.patch_size,
-                embed_dim=CFG.embed_dim,
-                depth=CFG.depth,
-                num_heads=CFG.num_heads,
-                drop_rate=CFG.drop_rate,
-                attn_drop_rate=CFG.attn_drop_rate,
-                drop_path_rate=CFG.drop_path_rate,
+rgb_encoder = VisionTransformer(
+                    img_size=CFG.img_size,
+                    patch_size=CFG.patch_size,
+                    input_channels=3,
+                    embed_dim=CFG.embed_dim,
+                    depth=CFG.depth,
+                    num_heads=CFG.num_heads,
+                    drop_rate=CFG.drop_rate,
+                    attn_drop_rate=CFG.attn_drop_rate,
+                    drop_path_rate=CFG.drop_path_rate
+                    )
+
+lidar_encoder = VisionTransformer(
+                    img_size=CFG.img_size,
+                    patch_size=CFG.patch_size,
+                    input_channels=1,
+                    embed_dim=CFG.embed_dim,
+                    depth=CFG.depth,
+                    num_heads=CFG.num_heads,
+                    drop_rate=CFG.drop_rate,
+                    attn_drop_rate=CFG.attn_drop_rate,
+                    drop_path_rate=CFG.drop_path_rate
+                    )
+
+rob_traj_decoder = TransformerDecoder(
+                    embed_dim=CFG.embed_dim,
+                    depth=CFG.depth,
+                    num_heads=CFG.num_heads,
+                    drop_rate=CFG.drop_rate,
+                    attn_drop_rate=CFG.attn_drop_rate,
+                    drop_path_rate=CFG.drop_path_rate
+                    )
+
+model = AttnNav(rgb_encoder=rgb_encoder,
+                lidar_encoder=lidar_encoder,
+                rob_traj_decoder=rob_traj_decoder,
                 lr=CFG.learning_rate,
                 optimizer=CFG.optimizer,
                 weight_decay=CFG.weight_decay)
@@ -45,7 +73,7 @@ trainer = Trainer(
     devices=num_gpus,
     strategy='ddp',
     logger=pl_loggers.TensorBoardLogger("logs/"),
-    callbacks=[model_checkpoint_cb, swa_cb, early_stopping_cb],
+    callbacks=[model_checkpoint_cb, early_stopping_cb],
     gradient_clip_val=1.0,
     max_epochs=CFG.epochs,
     log_every_n_steps=20)

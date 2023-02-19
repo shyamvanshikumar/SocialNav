@@ -10,7 +10,7 @@ num_workers = 8
 pin_memory = True
 use_weighted_sampling = False
 
-# lidar encoder config
+# image encoder config
 img_size = 240
 patch_size = 8
 embed_dim = 256
@@ -32,7 +32,7 @@ patience = 2
 factor = 0.5
 
 # training parameters
-epochs = 12
+epochs = 50
 
 # gpu vs cpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
