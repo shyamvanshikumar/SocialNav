@@ -28,7 +28,7 @@ class PositionalEncoding(nn.Module):
         return torch.FloatTensor(sinusoid_table).unsqueeze(0)
 
     def forward(self, x):
-        return x + self.pos_table[:, :x.size(1)].clone().detach()
+        return x + self.pos_table[:, :x.size(-2)].clone().detach()
 
 class TransformerDecoder(nn.Module):
     def __init__(self,
@@ -41,7 +41,8 @@ class TransformerDecoder(nn.Module):
                  drop_rate=0.,
                  attn_drop_rate=0.,
                  drop_path_rate=0.,
-                 norm_layer=nn.LayerNorm):
+                 norm_layer=nn.LayerNorm,
+                 multi=False):
         super().__init__()
         self.embed_dim = embed_dim
 
@@ -63,7 +64,8 @@ class TransformerDecoder(nn.Module):
                       drop=drop_rate,
                       attn_drop=attn_drop_rate,
                       drop_path=dpr[i],
-                      norm_layer=norm_layer) for i in range(depth)
+                      norm_layer=norm_layer,
+                      multi=multi) for i in range(depth)
         ])
         self.norm = norm_layer(embed_dim)
         self.pos_drop = nn.Dropout(drop_rate)

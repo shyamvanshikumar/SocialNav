@@ -6,6 +6,7 @@ from PIL import Image
 from scipy.spatial.transform import Rotation as R
 import torch
 from torch import nn, Tensor
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from torchvision import transforms
 import pytorch_lightning as pl
@@ -25,7 +26,9 @@ class NavSet(Dataset):
                  rosbag_path: str,
                  lidar_img_size = 240,
                  rgb_img_size = 240, 
-                 pose_len=30) -> None:
+                 rob_pose_len=30,
+                 max_obj=15,
+                 mot_pose_len=32) -> None:
         """ initialize a NavSet object,
             save path to data but do not load into RAM
         Args:
@@ -38,8 +41,13 @@ class NavSet(Dataset):
         self.pose_path = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_pose.pkl'))
         self.lidar_dir = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_lidar_bev'))
         self.img_dir = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_rgb_img'))
+        self.mot_dir = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_mot.pkl'))
 
         self.pose_data_points = pickle.load(open(self.pose_path, 'rb'))
+        self.mot_data = pickle.load(open(self.mot_dir, 'rb'))
+
+        self.max_obj = max_obj
+        self.mot_pose_len = mot_pose_len
 
         self.lidar_transforms = transforms.Compose([
             transforms.Resize((lidar_img_size,lidar_img_size)),
@@ -53,7 +61,7 @@ class NavSet(Dataset):
             transforms.ConvertImageDtype(torch.float),
         ])
 
-        self.length = len(os.listdir(self.lidar_dir))
+        self.length = max(0,len(os.listdir(self.lidar_dir)) - 2*mot_pose_len)
 
     def __len__(self) -> int:
         """ return the length of the of dataset
@@ -77,8 +85,23 @@ class NavSet(Dataset):
         
         goal_points =  np.transpose(np.matmul(curr_pose_mat_inv, goal_points)[:-1,:])
         goal_tensor = torch.from_numpy(goal_points).to(torch.float32)
+        #goal_tensor = torch.ones((20,2))
+        #mot_data_points = pickle.load(open(os.path.join(self.mot_dir, f'{index}.pkl'), 'rb'))
+        mot_data_points = self.mot_data[index][0:self.max_obj]
+        new_list = []
+        for i in range(len(mot_data_points)):
+            new_list.append(mot_data_points[i][0:self.mot_pose_len])
+        mot_data_points = new_list
+        num_obj = len(mot_data_points)
+        seq_len = 50 #len(mot_data_points[0])
+        pad_obj_len = max(0,self.max_obj - num_obj)
+        pad_seq_len = max(0,self.mot_pose_len - seq_len)
+        mot_data_points = np.array(mot_data_points)
+        #mot_data_points = np.pad(mot_data_points, ((0,0),(0,pad_seq_len),(0,0)), "edge")
+        mot_data_points = np.pad(mot_data_points, ((0,pad_obj_len), (0,0), (0,0)), "constant")
+        mot_tensor = torch.from_numpy(mot_data_points).to(torch.float32)
 
-        return rgb_img, lidar_img, goal_tensor
+        return rgb_img, lidar_img, goal_tensor, mot_tensor, num_obj
 
 class NavSetDataModule(pl.LightningDataModule):
 

@@ -101,7 +101,6 @@ class VisionTransformer(nn.Module):
         ])
         self.norm = norm_layer(embed_dim)
 
-        # Classifier head
         self.head = nn.Linear(embed_dim,
                               embed_dim//2)
 

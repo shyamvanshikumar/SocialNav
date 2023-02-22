@@ -9,15 +9,18 @@ import pytorch_lightning as pl
 from train import config as CFG
 from models.encoder import VisionTransformer
 from models.decoder import TransformerDecoder
+from models.utils import MLP
 
 class AttnNav(pl.LightningModule):
     def __init__(self,
                  rgb_encoder,
                  lidar_encoder,
                  rob_traj_decoder,
-                 mot_decoder=None,
-                 only_rob=True,
-                 only_mot=False,
+                 mot_decoder,
+                 embed_dim,
+                 enable_rob_dec=True,
+                 enable_mot_dec=False,
+                 freeze_enc=False,
                  optimizer="AdamW",
                  lr=0.001,
                  weight_decay=0.01,
@@ -27,11 +30,17 @@ class AttnNav(pl.LightningModule):
         
         self.rgb_encoder = rgb_encoder
         self.lidar_encoder = lidar_encoder
-        self.decoder = rob_traj_decoder
+        self.rob_decoder = rob_traj_decoder
         self.mot_decoder = mot_decoder
 
-        self.only_mot = only_mot
-        self.only_rob = only_rob
+        self.mlp_head = nn.Linear(in_features=embed_dim, out_features=1)
+
+        self.enable_mot_dec = enable_mot_dec
+        self.enable_rob_dec = enable_rob_dec
+
+        if freeze_enc:
+            self.rgb_encoder.requires_grad_(False)
+            self.lidar_decoder.requires_grad_(False)
 
         self.criterion = nn.MSELoss(reduction='sum')
         self.optimizer = optimizer
@@ -39,29 +48,58 @@ class AttnNav(pl.LightningModule):
         self.weight_decay = weight_decay
         self.momentum = momentum
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["rgb_encoder", "lidar_encoder", "rob_traj_decoder", "mot_decoder"])
 
-    def forward(self, rgb_img, lidar_img, trg_pose_seq):
+    def forward(self, rgb_img, lidar_img, trg_pose_seq, trg_mot_seq):
         B, N, C = trg_pose_seq.shape
         rgb_enc_out = self.rgb_encoder(rgb_img)
         lidar_enc_out = self.lidar_encoder(lidar_img)
         enc_output = torch.cat([rgb_enc_out, lidar_enc_out], dim=2)
         trg_pose_seq = torch.cat([torch.zeros((B,2), device=trg_pose_seq.device).unsqueeze(dim=1), trg_pose_seq], dim=1)
-        dec_output = self.decoder(enc_output, trg_pose_seq[:,:-1])
-        return dec_output
+        B, O, N, C = trg_mot_seq.shape
+        #trg_mot_seq = torch.cat([torch.zeros((B,O,2), device=trg_mot_seq.device).unsqueeze(dim=2), trg_mot_seq], dim=2)
+
+        num_objects = None
+        rob_dec_output = None
+        mot_dec_output = None
+
+        if self.enable_rob_dec:
+            rob_dec_output = self.rob_decoder(enc_output[:,1:], trg_pose_seq[:,:-1])
+            
+        if self.enable_mot_dec:
+            num_objects = self.mlp_head(enc_output[:,1])
+            #input_seq = trg_mot_seq[:,:,:-1].reshape(B*O, N, C)
+            mot_dec_output = self.mot_decoder(enc_output[:,1:], trg_mot_seq[:,:,:-1]) #.reshape(B,O,N,C)
+        return rob_dec_output, mot_dec_output, num_objects
     
     def training_step(self, batch, batch_idx):
-        image, lidar, pose = batch
-        dec_output = self.forward(image, lidar, pose)
-        loss = self.criterion(dec_output, pose)
+        image, lidar, pose, mot_traj, num_obj = batch
+        rob_dec_output, mot_dec_output, num_objects = self.forward(image, lidar, pose, mot_traj)
+        if self.enable_rob_dec:
+            loss = self.criterion(rob_dec_output, pose)
+        if self.enable_mot_dec:
+            B, O, N, C = mot_traj.shape
+            mot_traj = mot_traj[:,:,1:]
+            loss = self.criterion(num_objects.squeeze(), num_obj.to(dtype=torch.float32))
+            for i in range(B):
+                loss += self.criterion(mot_dec_output[i,:num_obj[i]], mot_traj[i,:num_obj[i]])
         #print("\n ++ ",loss, "++\n")
+
         self.log("train_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         return loss
     
     def validation_step(self, batch, batch_idx):
-        image, lidar, pose = batch
-        dec_output = self.forward(image, lidar, pose)
-        loss = self.criterion(dec_output, pose)
+        image, lidar, pose, mot_traj, num_obj = batch
+        rob_dec_output, mot_dec_output, num_objects = self.forward(image, lidar, pose, mot_traj)
+        if self.enable_rob_dec:
+            loss = self.criterion(rob_dec_output, pose)
+        elif self.enable_mot_dec:
+            B, O, N, C = mot_traj.shape
+            mot_traj = mot_traj[:,:,1:]
+            #print(num_objects.shape, num_obj.shape)
+            loss = self.criterion(num_objects.squeeze(), num_obj.to(dtype=torch.float32))
+            for i in range(B):
+                loss += self.criterion(mot_dec_output[i,:num_obj[i]], mot_traj[i,:num_obj[i]])
         #print("val",batch_idx, loss)
         self.log("val_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
 

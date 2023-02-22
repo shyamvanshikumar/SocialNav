@@ -96,7 +96,7 @@ def extract_traj(lidar_dir_path, init_idx, poses, traj_len):
         for i in range(len(traj)):
             dist.append(math.dist(traj[0], traj[i]))
         if np.std(dist) > 0.25:
-            mov_obj_traj.append(traj)
+            mov_obj_traj.append(traj[0:traj_len])
 
     return mov_obj_traj
 
@@ -115,39 +115,26 @@ if __name__ == "__main__":
 
     save_data_path = "../data"
     bags = os.listdir(train_bags) + os.listdir(val_bags)
-    bags = ['A_Spot_Butler_Foodtruck_Fri_Nov_26_132.bag',
-            'A_Spot_Bass_Rec_Fri_Nov_26_126.bag',
-            'A_Spot_Stadium_Rec_Fri_Nov_26_135.bag',
-            'A_Spot_AHG_Library_Fri_Nov_5_21.bag',
-            'A_Spot_Stadium_PerformingArtsCenter_Sat_Nov_13_106.bag',
-            'A_Spot_GDC_Jester_Thu_Nov_18_121.bag',
-            'A_Spot_Library_AHG_Tue_Nov_9_43.bag',
-            'A_Spot_Parlin_Parlin_Wed_Nov_10_51.bag',
-            'A_Spot_LBJ_Stadium_Sat_Nov_13_105.bag',
-            'A_Spot_EER_AHG_Mon_Nov_8_32.bag',
-            'A_Spot_Library_Dobie_Wed_Nov_10_57.bag',
-            'A_Spot_Library_Fountain_Tue_Nov_9_35.bag',
-            'A_Spot_UTTower_Union_Wed_Nov_10_61.bag',
-            'A_Spot_Butler_LBJ_Sat_Nov_13_104.bag',
-            'A_Spot_AHG_GDC_Tue_Nov_9_41.bag']
     for rosbag_path in bags:
         print(f"{rosbag_path} moving object extraction begin")
         lidar_dir_path = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_lidar_bev'))
         pose_path = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_pose.pkl'))
+        mov_obj_dir_path = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_mot'))
         pose_data = pickle.load(open(pose_path, 'rb'))
         num_of_lidar_img = len(os.listdir(lidar_dir_path))
 
-        mov_obj_data = []
+        if not os.path.exists(mov_obj_dir_path):
+            os.makedirs(mov_obj_dir_path)
 
         for idx in tqdm(range(num_of_lidar_img)):
             traj_len = min(50, num_of_lidar_img - idx)
             poses = pose_data['pose_sync'][idx:idx+traj_len]
             curr_traj = extract_traj(lidar_dir_path, idx, poses, traj_len)
-            mov_obj_data.append(curr_traj)
+            mov_obj_data_path = os.path.join(mov_obj_dir_path, f"{idx}.pkl")
+            pickle.dump(curr_traj, open(mov_obj_data_path, 'wb'))
         
-        mov_obj_data_path = os.path.join(save_data_path, rosbag_path.split('/')[-1].replace('.bag','_mot.pkl'))
-        print(f"Extraction complete... Saved to {mov_obj_data_path}")
-        pickle.dump(mov_obj_data, open(mov_obj_data_path, 'wb'))
+        print(f"Extraction complete... Saved to {mov_obj_dir_path}")
+        
 
 
         

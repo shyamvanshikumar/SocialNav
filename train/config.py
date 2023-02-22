@@ -32,7 +32,7 @@ patience = 2
 factor = 0.5
 
 # training parameters
-epochs = 50
+epochs = 75
 
 # gpu vs cpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

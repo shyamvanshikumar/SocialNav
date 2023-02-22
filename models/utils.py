@@ -65,7 +65,8 @@ class SelfAttn(nn.Module):
                  qk_scale=None,
                  attn_drop=0.,
                  proj_drop=0.,
-                 mask=False):
+                 mask=False,
+                 multi=False):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -77,11 +78,18 @@ class SelfAttn(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
         self.mask = mask
+        self.multi = multi
 
     def forward(self, x):
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads,
-                                  C // self.num_heads).permute(2, 0, 3, 1, 4)
+        if self.multi:
+            B, O, N, C = x.shape
+            qkv = self.qkv(x).reshape(B, O, N, 3, self.num_heads,
+                                  C // self.num_heads).permute(3, 0, 1, 4, 2, 5)
+        else:
+            B, N, C = x.shape
+            qkv = self.qkv(x).reshape(B, N, 3, self.num_heads,
+                                    C // self.num_heads).permute(2, 0, 3, 1, 4)
+
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -95,7 +103,13 @@ class SelfAttn(nn.Module):
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = (attn @ v).transpose(1, 2)
+
+        if self.multi:
+            x = x.reshape(B, O, N, C)
+        else:
+            x = x.reshape(B, N, C)
+
         x = self.proj(x)
         x = self.proj_drop(x)
         return x, attn
@@ -110,7 +124,8 @@ class CrossAttn(nn.Module):
                  qkv_bias=False,
                  qk_scale=None,
                  attn_drop=0.,
-                 proj_drop=0.):
+                 proj_drop=0.,
+                 multi=False):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -122,20 +137,36 @@ class CrossAttn(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
+        self.multi = multi
+
     def forward(self, x, y):
-        B, N, C = x.shape
-        q = self.q(x).reshape(B, N, 1, self.num_heads,
-                                  C // self.num_heads).permute(2, 0, 3, 1, 4).squeeze()
-        
+        if self.multi:
+            B, O, N, C = x.shape
+            q = self.q(x).reshape(B, O, N, 1, self.num_heads,
+                                  C // self.num_heads).permute(3, 1, 0, 4, 2, 5) #O before B
+            q = q[0]
+        else:
+            B, N, C = x.shape
+            q = self.q(x).reshape(B, N, 1, self.num_heads,
+                                    C // self.num_heads).permute(2, 0, 3, 1, 4).squeeze()
+
         B, M, C = y.shape
         kv = self.kv(y).reshape(B, M, 2, self.num_heads, C // self.num_heads).permute(2,0,3,1,4)
+
         k, v = kv[0], kv[1]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = (attn @ v).transpose(1, 2)
+
+        if self.multi:
+            x = x.reshape(O,B,N,C).permute(1,0,2,3)
+        
+        else:
+            x = x.reshape(B,N,C)
+
         x = self.proj(x)
         x = self.proj_drop(x)
         return x, attn
@@ -195,7 +226,8 @@ class DecAttnBlock(nn.Module):
                  attn_drop=0.,
                  drop_path=0.,
                  act_layer=nn.GELU,
-                 norm_layer=nn.LayerNorm):
+                 norm_layer=nn.LayerNorm,
+                 multi=False):
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.maskedattn = SelfAttn(dim,
@@ -204,13 +236,15 @@ class DecAttnBlock(nn.Module):
                               qk_scale=qk_scale,
                               attn_drop=attn_drop,
                               proj_drop=drop,
-                              mask=True)
+                              mask=True,
+                              multi=multi)
         self.crossattn = CrossAttn(dim,
                               num_heads=num_heads,
                               qkv_bias=qkv_bias,
                               qk_scale=qk_scale,
                               attn_drop=attn_drop,
-                              proj_drop=drop)
+                              proj_drop=drop,
+                              multi=multi)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
         self.norm2 = norm_layer(dim)
