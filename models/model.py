@@ -39,6 +39,7 @@ class AttnNav(pl.LightningModule):
         self.enable_rob_dec = enable_rob_dec
 
         if freeze_enc:
+            print("encoder_frozen")
             self.rgb_encoder.requires_grad_(False)
             self.lidar_decoder.requires_grad_(False)
 

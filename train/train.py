@@ -18,7 +18,7 @@ early_stopping_cb = EarlyStopping(monitor='val_loss',
 swa_cb = StochasticWeightAveraging(swa_lrs=1e-2)
 model_checkpoint_cb = ModelCheckpoint(
     dirpath='trained_models/',
-    filename='mot_train_2_no_earlystop'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
+    filename='mot_train_2_nolr'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
     monitor='val_loss',
     mode='min')
 
@@ -55,7 +55,7 @@ rob_traj_decoder = TransformerDecoder(
                     drop_path_rate=CFG.drop_path_rate
                     )
 
-mot_traj_decoder = TransformerDecoder(
+mot_decoder = TransformerDecoder(
                     embed_dim=CFG.embed_dim,
                     depth=CFG.depth,
                     num_heads=CFG.num_heads,
@@ -65,16 +65,32 @@ mot_traj_decoder = TransformerDecoder(
                     multi=True
                     )
 
-model = AttnNav(rgb_encoder=rgb_encoder,
-                lidar_encoder=lidar_encoder,
-                rob_traj_decoder=rob_traj_decoder,
-                mot_decoder=mot_traj_decoder,
-                enable_rob_dec=False,
-                enable_mot_dec=True,
-                embed_dim=CFG.embed_dim,
-                lr=CFG.learning_rate,
-                optimizer=CFG.optimizer,
-                weight_decay=CFG.weight_decay)
+if CFG.ckp_path != None:
+    print("Model loaded from checkpoint"+CFG.ckp_path)
+    model = AttnNav.load_from_checkpoint(CFG.ckp_path,
+                                     rgb_encoder=rgb_encoder,
+                                     lidar_encoder=lidar_encoder,
+                                     rob_traj_decoder=rob_traj_decoder,
+                                     mot_decoder=mot_decoder,)
+
+else: 
+    model = AttnNav(rgb_encoder=rgb_encoder,
+                    lidar_encoder=lidar_encoder,
+                    rob_traj_decoder=rob_traj_decoder,
+                    mot_decoder=mot_decoder,
+                    enable_rob_dec=False,
+                    enable_mot_dec=True,
+                    embed_dim=CFG.embed_dim,
+                    lr=CFG.learning_rate,
+                    optimizer=CFG.optimizer,
+                    weight_decay=CFG.weight_decay)
+
+if CFG.freeze_enc:
+    print("Encoder parameters frozen")
+    model.rgb_encoder.requires_grad_(False)
+    model.lidar_encoder.requires_grad_(False)
+    model.enable_rob_dec=True
+    model.enable_mot_dec=False
 
 datamodel = NavSetDataModule(save_data_path=CFG.save_data_path,
                              train_rosbag_path=CFG.train_rosbag_path,
@@ -83,13 +99,15 @@ datamodel = NavSetDataModule(save_data_path=CFG.save_data_path,
                              num_workers=CFG.num_workers,
                              pin_memory=CFG.pin_memory)
 
+torch.set_float32_matmul_precision("high")
+
 num_gpus = torch.cuda.device_count()
 trainer = Trainer(
     accelerator='gpu',
     devices=num_gpus,
     strategy='ddp',
     logger=pl_loggers.TensorBoardLogger("logs/"),
-    callbacks=[model_checkpoint_cb],
+    callbacks=[model_checkpoint_cb, early_stopping_cb],
     gradient_clip_val=1.0,
     max_epochs=CFG.epochs,
     log_every_n_steps=20)
@@ -97,10 +115,5 @@ trainer = Trainer(
 print("Starting training!!!")
 
 trainer.fit(model, datamodel)
-
-
-torch.save(
-    model.state_dict(),
-    'trained_models/' + 'mot_train_2_no_earlystop' + datetime.now().strftime("%d-%m-%Y-%H-%M-%S") + '.pt')
 
 print('Model has been trained and saved!')

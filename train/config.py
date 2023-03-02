@@ -33,6 +33,8 @@ factor = 0.5
 
 # training parameters
 epochs = 75
+freeze_enc = False #True
+ckp_path = None #"/workspace/project/trained_models/mot_train_2_no_earlystop22-02-2023-21-59-00.ckpt"
 
 # gpu vs cpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

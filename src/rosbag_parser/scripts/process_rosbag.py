@@ -54,8 +54,8 @@ class ParseBag:
 
         # find the range of future message (groud truth of prediction) indexes in the recorded odom messages
         odom_closest_index = np.searchsorted(self.odom_ts, current_time)+1
-        odom_future_index = min(odom_closest_index + 30, len(self.odom_msgs) - 1)
-        odom_past_index = max(odom_closest_index - 30, 0)
+        odom_future_index = min(odom_closest_index + 82, len(self.odom_msgs) - 1)
+        odom_past_index = max(odom_closest_index - 10, 0)
 
         pose_future = self.convert_odom_to_pose(self.odom_msgs[odom_closest_index:odom_future_index])
         pose_history = self.convert_odom_to_pose(self.odom_msgs[odom_past_index:odom_closest_index])
@@ -91,6 +91,7 @@ class ParseBag:
         print('Saving pose to: ', pose_path)
         pickle.dump(self.pose_data, open(pose_path, 'wb'))
 
+        """
         print('Saving lidar images to:', lidar_dir)
         if not os.path.exists(lidar_dir):
             os.makedirs(lidar_dir)
@@ -113,7 +114,7 @@ class ParseBag:
             if not cv2.imwrite(file_path, mat):
                 raise Exception('Could not write image')
             print("saved to ", file_path)
-
+        """
         cprint('Done!', 'green')
 
 def main():
