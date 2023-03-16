@@ -32,8 +32,8 @@ patience = 2
 factor = 0.5
 
 # training parameters
-epochs = 75
-freeze_enc = False #True
+epochs = 25
+freeze_enc = False
 ckp_path = None #"/workspace/project/trained_models/mot_train_2_no_earlystop22-02-2023-21-59-00.ckpt"
 
 # gpu vs cpu

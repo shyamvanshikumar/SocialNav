@@ -18,7 +18,7 @@ early_stopping_cb = EarlyStopping(monitor='val_loss',
 swa_cb = StochasticWeightAveraging(swa_lrs=1e-2)
 model_checkpoint_cb = ModelCheckpoint(
     dirpath='trained_models/',
-    filename='mot_train_2_nolr'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
+    filename='rob_train_3sec_spread_pose_end2end'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
     monitor='val_loss',
     mode='min')
 
@@ -78,8 +78,8 @@ else:
                     lidar_encoder=lidar_encoder,
                     rob_traj_decoder=rob_traj_decoder,
                     mot_decoder=mot_decoder,
-                    enable_rob_dec=False,
-                    enable_mot_dec=True,
+                    enable_rob_dec=True,
+                    enable_mot_dec=False,
                     embed_dim=CFG.embed_dim,
                     lr=CFG.learning_rate,
                     optimizer=CFG.optimizer,
@@ -95,6 +95,7 @@ if CFG.freeze_enc:
 datamodel = NavSetDataModule(save_data_path=CFG.save_data_path,
                              train_rosbag_path=CFG.train_rosbag_path,
                              val_rosbag_path=CFG.val_rosbag_path,
+                             test_rosbag_path=CFG.val_rosbag_path,
                              batch_size=CFG.batch_size,
                              num_workers=CFG.num_workers,
                              pin_memory=CFG.pin_memory)
@@ -105,7 +106,7 @@ num_gpus = torch.cuda.device_count()
 trainer = Trainer(
     accelerator='gpu',
     devices=num_gpus,
-    strategy='ddp',
+    strategy='ddp_find_unused_parameters_true',
     logger=pl_loggers.TensorBoardLogger("logs/"),
     callbacks=[model_checkpoint_cb, early_stopping_cb],
     gradient_clip_val=1.0,

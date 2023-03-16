@@ -148,7 +148,8 @@ class CrossAttn(nn.Module):
         else:
             B, N, C = x.shape
             q = self.q(x).reshape(B, N, 1, self.num_heads,
-                                    C // self.num_heads).permute(2, 0, 3, 1, 4).squeeze()
+                                    C // self.num_heads).permute(2, 0, 3, 1, 4)
+            q = q[0]
 
         B, M, C = y.shape
         kv = self.kv(y).reshape(B, M, 2, self.num_heads, C // self.num_heads).permute(2,0,3,1,4)

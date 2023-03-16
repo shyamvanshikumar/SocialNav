@@ -26,7 +26,7 @@ class NavSet(Dataset):
                  rosbag_path: str,
                  lidar_img_size = 240,
                  rgb_img_size = 240, 
-                 rob_pose_len=30,
+                 rob_pose_len=32,
                  max_obj=15,
                  mot_pose_len=32) -> None:
         """ initialize a NavSet object,
@@ -48,6 +48,7 @@ class NavSet(Dataset):
 
         self.max_obj = max_obj
         self.mot_pose_len = mot_pose_len
+        self.rob_pose_len = rob_pose_len
 
         self.lidar_transforms = transforms.Compose([
             transforms.Resize((lidar_img_size,lidar_img_size)),
@@ -78,8 +79,17 @@ class NavSet(Dataset):
         curr_pose = self.pose_data_points['pose_sync'][index]
         curr_pose_mat_inv = np.linalg.pinv(get_affine_matrix_quat(curr_pose[0], curr_pose[1], curr_pose[2]))
 
-        goal_points = np.ones((3,len(self.pose_data_points['pose_future'][index])), dtype=np.float32)
-        for i, goal_pose in enumerate(self.pose_data_points['pose_future'][index]):
+        #goal_points = np.ones((3,len(self.pose_data_points['pose_future'][index])), dtype=np.float32)
+        
+
+        gt_pose = []
+        for i in range(1,self.rob_pose_len+1):
+            if i % 5 == 0:
+                gt_pose.append(self.pose_data_points['pose_sync'][index+i])
+        
+        goal_points = np.ones((3,len(gt_pose)), dtype=np.float32)
+
+        for i, goal_pose in enumerate(gt_pose):  #(self.pose_data_points['pose_sync'][index+1:index+1+self.rob_pose_len]):
             goal_points[0,i] = goal_pose[0]
             goal_points[1,i] = goal_pose[1]
         
@@ -109,6 +119,7 @@ class NavSetDataModule(pl.LightningDataModule):
                  save_data_path: str,
                  train_rosbag_path: str,
                  val_rosbag_path: str,
+                 test_rosbag_path: str,
                  batch_size=16,
                  num_workers=8,
                  pin_memory=False,
@@ -127,6 +138,7 @@ class NavSetDataModule(pl.LightningDataModule):
         print(len(self.train_bags))
         self.val_bags = [b for b in os.listdir(val_rosbag_path) if os.path.isfile(os.path.join(val_rosbag_path,b))]
         print(len(self.val_bags))
+        self.test_bags = [b for b in os.listdir(test_rosbag_path) if os.path.isfile(os.path.join(test_rosbag_path,b))]
 
     def _concatenate_dataset(self, bag_list):
         tmp_sets = []
@@ -143,6 +155,9 @@ class NavSetDataModule(pl.LightningDataModule):
         
         if stage == "validate":
             self.val_set = self._concatenate_dataset(self.val_bags)
+
+        if stage == "test":
+            self.test_set = self._concatenate_dataset(self.test_bags)
     
     def train_dataloader(self) -> DataLoader:
         """ return the training dataloader
@@ -158,6 +173,16 @@ class NavSetDataModule(pl.LightningDataModule):
         """ return validation dataloader
         """
         return DataLoader(dataset=self.val_set,
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers,
+                          pin_memory=self.pin_memory,
+                          drop_last=True) 
+
+    def test_dataloader(self) -> DataLoader:
+        """ return validation dataloader
+        """
+        return DataLoader(dataset=self.test_set,
                           batch_size=self.batch_size,
                           shuffle=False,
                           num_workers=self.num_workers,
