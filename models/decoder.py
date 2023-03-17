@@ -42,10 +42,11 @@ class TransformerDecoder(nn.Module):
                  attn_drop_rate=0.,
                  drop_path_rate=0.,
                  norm_layer=nn.LayerNorm,
-                 multi=False):
+                 multi=False,
+                 auto_reg=True):
         super().__init__()
         self.embed_dim = embed_dim
-
+        self.auto_reg = auto_reg
         # embeding coordinates to embed_dim Tensors
         self.linear_in_emb = nn.Linear(in_features=2, out_features=embed_dim)
         #sinusoidal positional encoding
@@ -91,6 +92,8 @@ class TransformerDecoder(nn.Module):
 
         for blk in self.blocks:
             x = blk(x, enc_output)
-        x = self.linear_out_emb(self.norm(x))
+        
+        if self.auto_reg:
+            x = self.linear_out_emb(self.norm(x))
         return x
 

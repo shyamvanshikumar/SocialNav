@@ -22,6 +22,7 @@ class AttnNav(pl.LightningModule):
                  enable_rob_dec=True,
                  enable_mot_dec=False,
                  freeze_enc=False,
+                 auto_reg=True,
                  optimizer="AdamW",
                  lr=0.001,
                  weight_decay=0.01,
@@ -38,6 +39,10 @@ class AttnNav(pl.LightningModule):
 
         self.enable_mot_dec = enable_mot_dec
         self.enable_rob_dec = enable_rob_dec
+        self.auto_reg = auto_reg
+
+        self.fc1 = nn.Linear(in_features=embed_dim, out_features=embed_dim)
+        self.fc2 = nn.Linear(in_features=embed_dim, out_features=12)
 
         if freeze_enc:
             print("encoder_frozen")
@@ -68,7 +73,12 @@ class AttnNav(pl.LightningModule):
         mot_dec_output = None
 
         if self.enable_rob_dec:
-            rob_dec_output = self.rob_decoder(enc_output[:,1:], trg_pose_seq[:,:-1])
+            if self.auto_reg:
+                rob_dec_output = self.rob_decoder(enc_output[:,1:], trg_pose_seq[:,:-1])
+            else:
+                initial_pose = torch.zeros((B,2), device=trg_pose_seq.device).unsqueeze(dim=1)
+                output = self.rob_decoder(enc_output[:,1:], initial_pose)
+                rob_dec_output = self.fc2(self.fc1(output)).reshape(B,6,2)
             
         if self.enable_mot_dec:
             num_objects = self.mlp_head(enc_output[:,1])

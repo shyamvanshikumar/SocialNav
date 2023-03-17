@@ -18,7 +18,7 @@ early_stopping_cb = EarlyStopping(monitor='val_loss',
 swa_cb = StochasticWeightAveraging(swa_lrs=1e-2)
 model_checkpoint_cb = ModelCheckpoint(
     dirpath='trained_models/',
-    filename='rob_train_3sec_spread_pose_end2end'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
+    filename='rob_train_3sec_spread_pose_all_pose'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
     monitor='val_loss',
     mode='min')
 
@@ -52,7 +52,8 @@ rob_traj_decoder = TransformerDecoder(
                     num_heads=CFG.num_heads,
                     drop_rate=CFG.drop_rate,
                     attn_drop_rate=CFG.attn_drop_rate,
-                    drop_path_rate=CFG.drop_path_rate
+                    drop_path_rate=CFG.drop_path_rate,
+                    auto_reg=CFG.auto_reg
                     )
 
 mot_decoder = TransformerDecoder(
@@ -71,16 +72,18 @@ if CFG.ckp_path != None:
                                      rgb_encoder=rgb_encoder,
                                      lidar_encoder=lidar_encoder,
                                      rob_traj_decoder=rob_traj_decoder,
-                                     mot_decoder=mot_decoder,)
+                                     mot_decoder=mot_decoder,
+                                     auto_reg=CFG.auto_reg)
 
 else: 
     model = AttnNav(rgb_encoder=rgb_encoder,
                     lidar_encoder=lidar_encoder,
                     rob_traj_decoder=rob_traj_decoder,
                     mot_decoder=mot_decoder,
-                    enable_rob_dec=True,
-                    enable_mot_dec=False,
+                    enable_rob_dec=False,
+                    enable_mot_dec=True,
                     embed_dim=CFG.embed_dim,
+                    auto_reg=CFG.auto_reg,
                     lr=CFG.learning_rate,
                     optimizer=CFG.optimizer,
                     weight_decay=CFG.weight_decay)

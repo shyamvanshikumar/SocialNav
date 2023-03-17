@@ -23,6 +23,9 @@ drop_path_rate = 0.1
 # both encoders
 output_dim = 128
 
+#decoder auto-reg determines whether to output all co-ordinates at once or output one at a time
+auto_reg = False
+
 # optimizer config
 optimizer = 'AdamW'
 learning_rate = 5e-4
@@ -33,8 +36,8 @@ factor = 0.5
 
 # training parameters
 epochs = 25
-freeze_enc = False
-ckp_path = None #"/workspace/project/trained_models/mot_train_2_no_earlystop22-02-2023-21-59-00.ckpt"
+freeze_enc = True
+ckp_path = "/workspace/project/trained_models/mot_train3_3sec16-03-2023-19-48-19.ckpt"
 
 # gpu vs cpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
