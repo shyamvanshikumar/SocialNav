@@ -18,7 +18,7 @@ early_stopping_cb = EarlyStopping(monitor='val_loss',
 swa_cb = StochasticWeightAveraging(swa_lrs=1e-2)
 model_checkpoint_cb = ModelCheckpoint(
     dirpath='trained_models/',
-    filename='rob_train_3sec_spread_pose_all_pose'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
+    filename='rob_train_coll_loss_trial'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
     monitor='val_loss',
     mode='min')
 
@@ -73,17 +73,19 @@ if CFG.ckp_path != None:
                                      lidar_encoder=lidar_encoder,
                                      rob_traj_decoder=rob_traj_decoder,
                                      mot_decoder=mot_decoder,
-                                     auto_reg=CFG.auto_reg)
+                                     auto_reg=CFG.auto_reg,
+                                     use_coll_loss=CFG.use_coll_loss)
 
 else: 
     model = AttnNav(rgb_encoder=rgb_encoder,
                     lidar_encoder=lidar_encoder,
                     rob_traj_decoder=rob_traj_decoder,
                     mot_decoder=mot_decoder,
-                    enable_rob_dec=False,
+                    enable_rob_dec=True,
                     enable_mot_dec=True,
                     embed_dim=CFG.embed_dim,
                     auto_reg=CFG.auto_reg,
+                    use_coll_loss=CFG.use_coll_loss,
                     lr=CFG.learning_rate,
                     optimizer=CFG.optimizer,
                     weight_decay=CFG.weight_decay)
@@ -92,8 +94,9 @@ if CFG.freeze_enc:
     print("Encoder parameters frozen")
     model.rgb_encoder.requires_grad_(False)
     model.lidar_encoder.requires_grad_(False)
+    model.mot_decoder.requires_grad_(False)
     model.enable_rob_dec=True
-    model.enable_mot_dec=False
+    model.enable_mot_dec=True
 
 datamodel = NavSetDataModule(save_data_path=CFG.save_data_path,
                              train_rosbag_path=CFG.train_rosbag_path,
@@ -111,7 +114,7 @@ trainer = Trainer(
     devices=num_gpus,
     strategy='ddp_find_unused_parameters_true',
     logger=pl_loggers.TensorBoardLogger("logs/"),
-    callbacks=[model_checkpoint_cb, early_stopping_cb],
+    callbacks=[model_checkpoint_cb], #early_stopping_cb],
     gradient_clip_val=1.0,
     max_epochs=CFG.epochs,
     log_every_n_steps=20)

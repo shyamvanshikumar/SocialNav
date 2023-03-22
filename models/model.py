@@ -3,7 +3,8 @@ import warnings
 
 import torch
 from torch import nn, Tensor
-from scipy.spatial.distance import directed_hausdorff
+from scipy.spatial.distance import directed_hausdorff, cdist
+import numpy as np
 
 import pytorch_lightning as pl
 
@@ -11,6 +12,22 @@ from train import config as CFG
 from models.encoder import VisionTransformer
 from models.decoder import TransformerDecoder
 from models.utils import MLP
+
+class CollLoss(nn.Module):
+    def __init__(self, sparse_mot=False):
+        super().__init__()
+        self.sparse_mot = sparse_mot
+        self.mse = nn.MSELoss(reduction='sum')
+    
+    def forward(self, pred_rob_traj, mot_traj, num_obj):
+        if not self.sparse_mot:
+            mot_traj = mot_traj[:,5::5]
+        loss = 0
+        for i in range(num_obj):
+            for j in range(len(pred_rob_traj)):
+                if math.dist(pred_rob_traj[j], mot_traj[i][j]) < 0.3:
+                    loss += 1
+        return loss
 
 class AttnNav(pl.LightningModule):
     def __init__(self,
@@ -23,6 +40,7 @@ class AttnNav(pl.LightningModule):
                  enable_mot_dec=False,
                  freeze_enc=False,
                  auto_reg=True,
+                 use_coll_loss=False,
                  optimizer="AdamW",
                  lr=0.001,
                  weight_decay=0.01,
@@ -40,9 +58,10 @@ class AttnNav(pl.LightningModule):
         self.enable_mot_dec = enable_mot_dec
         self.enable_rob_dec = enable_rob_dec
         self.auto_reg = auto_reg
+        self.use_coll_loss = use_coll_loss
 
-        self.fc1 = nn.Linear(in_features=embed_dim, out_features=embed_dim)
-        self.fc2 = nn.Linear(in_features=embed_dim, out_features=12)
+        #self.fc1 = nn.Linear(in_features=embed_dim, out_features=embed_dim)
+        #self.fc2 = nn.Linear(in_features=embed_dim, out_features=12)
 
         if freeze_enc:
             print("encoder_frozen")
@@ -50,12 +69,13 @@ class AttnNav(pl.LightningModule):
             self.lidar_decoder.requires_grad_(False)
 
         self.criterion = nn.MSELoss(reduction='sum')
+        self.coll_loss = CollLoss()
         self.optimizer = optimizer
         self.lr = lr
         self.weight_decay = weight_decay
         self.momentum = momentum
 
-        self.test_output = {"collision_dist":0.0, "num_examples":0.0, "pose_error":0.0, "hausdorff":0.0}
+        self.test_output = {"coll_hausdorff_dist":0.0, "coll_minimin_dist":0.0, "num_examples":0.0, "pose_error":0.0, "hausdorff":0.0}
 
         self.save_hyperparameters(ignore=["rgb_encoder", "lidar_encoder", "rob_traj_decoder", "mot_decoder"])
 
@@ -78,7 +98,7 @@ class AttnNav(pl.LightningModule):
             else:
                 initial_pose = torch.zeros((B,2), device=trg_pose_seq.device).unsqueeze(dim=1)
                 output = self.rob_decoder(enc_output[:,1:], initial_pose)
-                rob_dec_output = self.fc2(self.fc1(output)).reshape(B,6,2)
+                #rob_dec_output = self.fc2(self.fc1(output)).reshape(B,6,2)
             
         if self.enable_mot_dec:
             num_objects = self.mlp_head(enc_output[:,1])
@@ -89,15 +109,22 @@ class AttnNav(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         image, lidar, pose, mot_traj, num_obj = batch
         rob_dec_output, mot_dec_output, num_objects = self.forward(image, lidar, pose, mot_traj)
-        if self.enable_rob_dec:
+        if self.enable_rob_dec and (not self.enable_mot_dec):
             loss = self.criterion(rob_dec_output, pose)
+
         if self.enable_mot_dec:
             B, O, N, C = mot_traj.shape
             mot_traj = mot_traj[:,:,1:]
             loss = self.criterion(num_objects.squeeze(), num_obj.to(dtype=torch.float32))
             for i in range(B):
                 loss += self.criterion(mot_dec_output[i,:num_obj[i]], mot_traj[i,:num_obj[i]])
+            if self.enable_rob_dec:
+                loss += self.criterion(rob_dec_output, pose)
         #print("\n ++ ",loss, "++\n")
+
+        if self.use_coll_loss:
+            for i in range(B):
+                loss += self.coll_loss(rob_dec_output[i], mot_dec_output[i], num_obj[i])
 
         self.log("train_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         return loss
@@ -105,16 +132,22 @@ class AttnNav(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         image, lidar, pose, mot_traj, num_obj = batch
         rob_dec_output, mot_dec_output, num_objects = self.forward(image, lidar, pose, mot_traj)
-        if self.enable_rob_dec:
+        if self.enable_rob_dec and (not self.enable_mot_dec):
             loss = self.criterion(rob_dec_output, pose)
-        elif self.enable_mot_dec:
+            
+        if self.enable_mot_dec:
             B, O, N, C = mot_traj.shape
             mot_traj = mot_traj[:,:,1:]
-            #print(num_objects.shape, num_obj.shape)
             loss = self.criterion(num_objects.squeeze(), num_obj.to(dtype=torch.float32))
             for i in range(B):
                 loss += self.criterion(mot_dec_output[i,:num_obj[i]], mot_traj[i,:num_obj[i]])
+            if self.enable_rob_dec:
+                loss += self.criterion(rob_dec_output, pose)
         #print("val",batch_idx, loss)
+        if self.use_coll_loss:
+            for i in range(B):
+                loss += self.coll_loss(rob_dec_output[i], mot_dec_output[i], num_obj[i])
+
         self.log("val_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
     
     def test_step(self, batch, batch_idx):
@@ -124,29 +157,36 @@ class AttnNav(pl.LightningModule):
         rob_dec_output, _, _ = self.forward(image, lidar, pose, mot_traj)
         pose_error = self.criterion(rob_dec_output, pose)/len(pose)
 
-        coll_dist = 0.0
+        coll_hausdorff_dist = 0.0
+        coll_minimin_dist = 0.0
         hausdorff_dist = 0.0
 
         for i in range(B):
-            coll_dist += self.collision_dist(rob_dec_output[i], mot_traj[i], num_obj[i])
+            haus_dist, minimin_dist = self.collision_dist(rob_dec_output[i], mot_traj[i], num_obj[i])
+            coll_hausdorff_dist += haus_dist
+            coll_minimin_dist += minimin_dist
             hausdorff_dist += max(directed_hausdorff(rob_dec_output[i].to('cpu'), pose[i].to('cpu'))[0], 
-                                                    directed_hausdorff(pose[i].to('cpu'), rob_dec_output[i].to('cpu'))[0])
+                                    directed_hausdorff(pose[i].to('cpu'), rob_dec_output[i].to('cpu'))[0])
 
         self.test_output["num_examples"] += len(batch)
-        self.test_output["collision_dist"] += coll_dist
+        self.test_output["coll_hausdorff_dist"] += coll_hausdorff_dist
+        self.test_output["coll_minimin_dist"] += coll_minimin_dist
         self.test_output["pose_error"] += pose_error.item()
         self.test_output["hausdorff"] += hausdorff_dist
     
     def on_test_epoch_end(self):
-        avg_coll_dist = self.test_output["collision_dist"]/self.test_output["num_examples"]
+        avg_coll_hausdorff_dist = self.test_output["coll_hausdorff_dist"]/self.test_output["num_examples"]
+        avg_coll_minimin_dist = self.test_output["coll_minimin_dist"]/self.test_output["num_examples"]
         avg_pose_error = self.test_output["pose_error"]/self.test_output["num_examples"]
         avg_hausdorff_dist = self.test_output["hausdorff"]/self.test_output["num_examples"]
 
-        print("avg_coll_dist", avg_coll_dist)
+        print("avg_coll_hausdorff_dist", avg_coll_hausdorff_dist)
+        print("avg_coll_minimin_dist", avg_coll_minimin_dist)
         print("avg_pose_error", avg_pose_error)
         print("avg_hausdorff_dist", avg_hausdorff_dist)
 
-        self.log("avg_coll_dist", avg_coll_dist)
+        self.log("avg_coll_hausdorff_dist", avg_coll_hausdorff_dist)
+        self.log("avg_coll_minimin_dist", avg_coll_minimin_dist)
         self.log("avg_pose_error", avg_pose_error)
         self.log("avg_hausdorff_dist", avg_hausdorff_dist)
     
@@ -172,10 +212,12 @@ class AttnNav(pl.LightningModule):
     @staticmethod
     def collision_dist(rob_traj, mot_traj, num_obj):
         coll_hausdorff_dist = 0.0
+        coll_minimin_dist = 0.0
         for i in range(num_obj):
             coll_hausdorff_dist += max(directed_hausdorff(rob_traj.to('cpu'), mot_traj[i].to('cpu'))[0],
                                         directed_hausdorff(mot_traj[i].to('cpu'), rob_traj.to('cpu'))[0])
-        return coll_hausdorff_dist/num_obj
+            coll_minimin_dist += np.amin(cdist(rob_traj.to('cpu'), mot_traj[i].to('cpu')))
+        return coll_hausdorff_dist/num_obj, coll_minimin_dist/num_obj
 
     def configure_optimizers(self):
         if self.optimizer == "Adam":

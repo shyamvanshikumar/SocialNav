@@ -42,7 +42,8 @@ rob_traj_decoder = TransformerDecoder(
                     num_heads=CFG.num_heads,
                     drop_rate=CFG.drop_rate,
                     attn_drop_rate=CFG.attn_drop_rate,
-                    drop_path_rate=CFG.drop_path_rate
+                    drop_path_rate=CFG.drop_path_rate,
+                    auto_reg=CFG.auto_reg,
                     )
 
 mot_decoder = TransformerDecoder(
@@ -55,7 +56,7 @@ mot_decoder = TransformerDecoder(
                     multi=True
                     )
 
-model_ckpt = "/workspace/project/trained_models/rob_train_3sec_spread_pose_end2end15-03-2023-16-34-19.ckpt"
+model_ckpt = "/workspace/project/trained_models/rob_train_with_coll_loss19-03-2023-21-05-29.ckpt"
 
 print("Model loaded from checkpoint"+model_ckpt)
 model = AttnNav.load_from_checkpoint(model_ckpt,
