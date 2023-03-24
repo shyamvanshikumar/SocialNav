@@ -4,6 +4,7 @@ import warnings
 import torch
 from torch import nn, Tensor
 from scipy.spatial.distance import directed_hausdorff, cdist
+#from scipy.spactial import ConvexHull
 import numpy as np
 
 import pytorch_lightning as pl
@@ -12,6 +13,35 @@ from train import config as CFG
 from models.encoder import VisionTransformer
 from models.decoder import TransformerDecoder
 from models.utils import MLP
+
+def dist_line_point(x1,y1, x2,y2, x3,y3): # x3,y3 is the point
+    px = x2-x1
+    py = y2-y1
+
+    something = px*px + py*py
+
+    u =  ((x3 - x1) * px + (y3 - y1) * py) / float(something)
+
+    if u > 1:
+        u = 1
+    elif u < 0:
+        u = 0
+
+    x = x1 + u * px
+    y = y1 + u * py
+
+    dx = x - x3
+    dy = y - y3
+
+    # Note: If the actual distance does not matter,
+    # if you only want to compare what this function
+    # returns to other results of this function, you
+    # can just return the squared distance instead
+    # (i.e. remove the sqrt) to gain a little performance
+
+    dist = math.sqrt(dx*dx + dy*dy)
+
+    return dist
 
 class CollLoss(nn.Module):
     def __init__(self, sparse_mot=False):
@@ -22,11 +52,26 @@ class CollLoss(nn.Module):
     def forward(self, pred_rob_traj, mot_traj, num_obj):
         if not self.sparse_mot:
             mot_traj = mot_traj[:,5::5]
+        # loss = 0
+        # for i in range(num_obj):
+        #     for j in range(len(pred_rob_traj)):
+        #         if math.dist(pred_rob_traj[j], mot_traj[i][j]) <= 1:
+        #             loss += 1
+
         loss = 0
         for i in range(num_obj):
-            for j in range(len(pred_rob_traj)):
-                if math.dist(pred_rob_traj[j], mot_traj[i][j]) < 0.3:
-                    loss += 1
+            dist = cdist(pred_rob_traj.to('cpu').detach(), mot_traj[i].to('cpu').detach())
+            loss += np.trace(dist)
+
+        # for i in range(num_obj):
+        #     mot_traj_np = mot_traj[i].to('cpu').detach()
+        #     hull = ConvexHull(mot_traj_np)
+        #     points = hull.points
+        #     dists = []
+        #     p = pred_rob_traj
+        #     for i in range(len(points)-1):
+        #         dists.append(dist(points[i][0],points[i][1],points[i+1][0],points[i+1][1],p[0],p[1]))
+        #     dist = min(dists)
         return loss
 
 class AttnNav(pl.LightningModule):
@@ -112,8 +157,9 @@ class AttnNav(pl.LightningModule):
         if self.enable_rob_dec and (not self.enable_mot_dec):
             loss = self.criterion(rob_dec_output, pose)
 
+        B, O, N, C = mot_traj.shape
+
         if self.enable_mot_dec:
-            B, O, N, C = mot_traj.shape
             mot_traj = mot_traj[:,:,1:]
             loss = self.criterion(num_objects.squeeze(), num_obj.to(dtype=torch.float32))
             for i in range(B):
@@ -124,7 +170,7 @@ class AttnNav(pl.LightningModule):
 
         if self.use_coll_loss:
             for i in range(B):
-                loss += self.coll_loss(rob_dec_output[i], mot_dec_output[i], num_obj[i])
+                loss += -1e-3 * self.coll_loss(rob_dec_output[i], mot_traj[i], num_obj[i])
 
         self.log("train_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         return loss
@@ -134,9 +180,10 @@ class AttnNav(pl.LightningModule):
         rob_dec_output, mot_dec_output, num_objects = self.forward(image, lidar, pose, mot_traj)
         if self.enable_rob_dec and (not self.enable_mot_dec):
             loss = self.criterion(rob_dec_output, pose)
+
+        B, O, N, C = mot_traj.shape
             
         if self.enable_mot_dec:
-            B, O, N, C = mot_traj.shape
             mot_traj = mot_traj[:,:,1:]
             loss = self.criterion(num_objects.squeeze(), num_obj.to(dtype=torch.float32))
             for i in range(B):
@@ -146,7 +193,7 @@ class AttnNav(pl.LightningModule):
         #print("val",batch_idx, loss)
         if self.use_coll_loss:
             for i in range(B):
-                loss += self.coll_loss(rob_dec_output[i], mot_dec_output[i], num_obj[i])
+                loss += -1e-3 * self.coll_loss(rob_dec_output[i], mot_traj[i], num_obj[i])
 
         self.log("val_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
     

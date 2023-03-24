@@ -56,7 +56,7 @@ mot_decoder = TransformerDecoder(
                     multi=True
                     )
 
-model_ckpt = "/workspace/project/trained_models/rob_train_with_coll_loss19-03-2023-21-05-29.ckpt"
+model_ckpt = "/workspace/project/trained_models/rob_train_3sec_spread_pose_end2end15-03-2023-16-34-19.ckpt"
 
 print("Model loaded from checkpoint"+model_ckpt)
 model = AttnNav.load_from_checkpoint(model_ckpt,

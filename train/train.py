@@ -18,7 +18,7 @@ early_stopping_cb = EarlyStopping(monitor='val_loss',
 swa_cb = StochasticWeightAveraging(swa_lrs=1e-2)
 model_checkpoint_cb = ModelCheckpoint(
     dirpath='trained_models/',
-    filename='rob_train_coll_loss_trial'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
+    filename='rob_train_scaled_l2_coll_loss'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
     monitor='val_loss',
     mode='min')
 
@@ -96,7 +96,7 @@ if CFG.freeze_enc:
     model.lidar_encoder.requires_grad_(False)
     model.mot_decoder.requires_grad_(False)
     model.enable_rob_dec=True
-    model.enable_mot_dec=True
+    model.enable_mot_dec=False
 
 datamodel = NavSetDataModule(save_data_path=CFG.save_data_path,
                              train_rosbag_path=CFG.train_rosbag_path,
