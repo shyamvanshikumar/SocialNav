@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
+import numpy as np
+import math
 from models.model import CollLoss
+from scipy.spatial.distance import directed_hausdorff, cdist
 
 class Generator(nn.Module):
     ''' Load a model and generate possible robot paths in beam search fashion '''
@@ -47,18 +50,37 @@ class Generator(nn.Module):
             gen_seq = self._get_next_state(enc_output, gen_seq, ts)
         
         return gen_seq
-    
-    def select_best(self, gen_seq, mot_traj, num_obj):
-        coll_criteria = CollLoss()
 
-        coll_count = []
+    def coll_metric(self, pred_rob_traj, mot_traj, num_obj):
+        mot_traj = mot_traj[:,5::5]
+        print("here")
+        loss = 0
+        for i in range(num_obj):
+            for j in range(len(pred_rob_traj)):
+                if math.dist(pred_rob_traj[j], mot_traj[i][j]) <= 1:
+                    loss += 1
+        return loss
+    
+    def select_best(self, gen_seq, mot_traj, num_obj, criteria="count"):
+        if criteria == "count":
+            coll_criteria = self.coll_metric
+        else:
+            coll_criteria = CollLoss()
+        coll_dist = []
         for i in range(len(gen_seq)):
-            coll_count.append(coll_criteria(gen_seq[i,1:], mot_traj, num_obj))
+            if gen_seq[i,-1,0].item() - gen_seq[i,0,0] <= 1:
+                a = 1000 if criteria == "count" else 0.0
+                coll_dist.append(a)
+            else:
+                coll_dist.append(coll_criteria(gen_seq[i,1:], mot_traj, num_obj))
         
-        min_coll = min(coll_count)
-        print(coll_count)
-        idx = coll_count.index(min_coll)
-        return gen_seq[idx], min_coll
+        print(coll_dist)
+        if criteria == "count":
+            max_dist = min(coll_dist)
+        else:
+            max_dist = max(coll_dist)
+        idx = coll_dist.index(max_dist)
+        return gen_seq[idx], max_dist
 
         
 

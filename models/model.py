@@ -4,7 +4,7 @@ import warnings
 import torch
 from torch import nn, Tensor
 from scipy.spatial.distance import directed_hausdorff, cdist
-#from scipy.spactial import ConvexHull
+from scipy.spatial import ConvexHull
 import numpy as np
 
 import pytorch_lightning as pl
@@ -19,6 +19,9 @@ def dist_line_point(x1,y1, x2,y2, x3,y3): # x3,y3 is the point
     py = y2-y1
 
     something = px*px + py*py
+
+    if something == 0:
+        return (x3-x1)*(x3-x1) + (y3-y1)*(y3-y1)
 
     u =  ((x3 - x1) * px + (y3 - y1) * py) / float(something)
 
@@ -39,8 +42,8 @@ def dist_line_point(x1,y1, x2,y2, x3,y3): # x3,y3 is the point
     # can just return the squared distance instead
     # (i.e. remove the sqrt) to gain a little performance
 
-    dist = math.sqrt(dx*dx + dy*dy)
-
+    #dist = math.sqrt(dx*dx + dy*dy)
+    dist = dx*dx + dy*dy
     return dist
 
 class CollLoss(nn.Module):
@@ -58,20 +61,31 @@ class CollLoss(nn.Module):
         #         if math.dist(pred_rob_traj[j], mot_traj[i][j]) <= 1:
         #             loss += 1
 
-        loss = 0
-        for i in range(num_obj):
-            dist = cdist(pred_rob_traj.to('cpu').detach(), mot_traj[i].to('cpu').detach())
-            loss += np.trace(dist)
-
+        # loss = 0
         # for i in range(num_obj):
-        #     mot_traj_np = mot_traj[i].to('cpu').detach()
-        #     hull = ConvexHull(mot_traj_np)
-        #     points = hull.points
-        #     dists = []
-        #     p = pred_rob_traj
-        #     for i in range(len(points)-1):
-        #         dists.append(dist(points[i][0],points[i][1],points[i+1][0],points[i+1][1],p[0],p[1]))
-        #     dist = min(dists)
+        #     dist = cdist(pred_rob_traj.to('cpu').detach(), mot_traj[i].to('cpu').detach())
+        #     loss += np.trace(dist)
+
+        loss = 0.0
+        pred_rob_traj = pred_rob_traj.to('cpu').detach().numpy()
+        for i in range(num_obj):
+            mot_traj_np = mot_traj[i].to('cpu').detach().numpy()
+
+            try:
+                hull = ConvexHull(mot_traj_np)
+                points = hull.points
+                for ri in range(len(pred_rob_traj)):
+                    dists = []
+                    p = pred_rob_traj[ri]
+                    for i in range(len(points)-1):
+                        distance = dist_line_point(points[i][0],points[i][1],points[i+1][0],points[i+1][1],p[0],p[1])
+                        dists.append(distance)
+                        if math.isnan(distance):
+                            print(points[i][0],points[i][1],points[i+1][0],points[i+1][1],p[0],p[1])
+                    curr_min = min(dists)
+                    loss = min(loss, curr_min)
+            except:
+                loss += 0.0
         return loss
 
 class AttnNav(pl.LightningModule):
