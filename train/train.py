@@ -18,7 +18,7 @@ early_stopping_cb = EarlyStopping(monitor='val_loss',
 swa_cb = StochasticWeightAveraging(swa_lrs=1e-2)
 model_checkpoint_cb = ModelCheckpoint(
     dirpath='trained_models/',
-    filename='rob_train_scaled_l2_coll_loss'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
+    filename='mot_train_only_newdata'+datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
     monitor='val_loss',
     mode='min')
 
@@ -81,7 +81,7 @@ else:
                     lidar_encoder=lidar_encoder,
                     rob_traj_decoder=rob_traj_decoder,
                     mot_decoder=mot_decoder,
-                    enable_rob_dec=True,
+                    enable_rob_dec=False,
                     enable_mot_dec=True,
                     embed_dim=CFG.embed_dim,
                     auto_reg=CFG.auto_reg,
@@ -112,7 +112,7 @@ num_gpus = torch.cuda.device_count()
 trainer = Trainer(
     accelerator='gpu',
     devices=num_gpus,
-    strategy='ddp_find_unused_parameters_true',
+    strategy='ddp',
     logger=pl_loggers.TensorBoardLogger("logs/"),
     callbacks=[model_checkpoint_cb], #early_stopping_cb],
     gradient_clip_val=1.0,

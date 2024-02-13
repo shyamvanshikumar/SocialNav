@@ -1,7 +1,7 @@
 <launch>
 
     <arg name="rosbag_path" default="None" />
-    <arg name="save_data_path" default="/catkin_ws/data" />
+    <arg name="save_data_path" default="/catkin_ws/data2" />
     <arg name="config_path" default="/catkin_ws/config.yaml" />
 
     <!--    data parser node -->

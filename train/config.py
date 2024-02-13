@@ -1,8 +1,8 @@
 import torch
 
-save_data_path = '/workspace/project/data/'
-train_rosbag_path = '/workspace/project/data/train_bags/'
-val_rosbag_path = '/workspace/project/data/val_bags/'
+save_data_path = '/workspace/data2/'
+train_rosbag_path = '/workspace/data2/train_bags/'
+val_rosbag_path = '/workspace/data2/val_bags/'
 
 # dataloader config
 batch_size = 6
@@ -27,7 +27,7 @@ output_dim = 128
 auto_reg = True
 
 #use collision loss
-use_coll_loss = True
+use_coll_loss = False
 
 # optimizer config
 optimizer = 'AdamW'
@@ -39,8 +39,8 @@ factor = 0.5
 
 # training parameters
 epochs = 35
-freeze_enc = True
-ckp_path = "/workspace/project/trained_models/mot_train_2_no_earlystop22-02-2023-21-59-00.ckpt"
+freeze_enc = False
+ckp_path = None #"/workspace/project/trained_models/mot_train_2_no_earlystop22-02-2023-21-59-00.ckpt"
 
 # gpu vs cpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

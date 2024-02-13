@@ -1,7 +1,9 @@
 notebook
 tqdm
 bagpy
-torch
-torchvision
+torch==1.13
+torchvision==0.14
+numpy
 scipy
 termcolor
+pytorch_lightning==1.9.5

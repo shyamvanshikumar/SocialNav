@@ -61,6 +61,10 @@ class Generator(nn.Module):
                     loss += 1
         return loss
     
+    def select_one(self, gen_seq):
+        idx = np.random.randint(length(gen_seq))
+        return gen_seq[idx]
+    
     def select_best(self, gen_seq, mot_traj, num_obj, criteria="count"):
         if criteria == "count":
             coll_criteria = self.coll_metric

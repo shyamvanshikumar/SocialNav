@@ -7,7 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
 
-config = yaml.safe_load(open('/workspace/project/config.yaml', 'r'))
+config = yaml.safe_load(open('../config.yaml', 'r'))
 res = config['RESOLUTION']
 dx = config['LIDAR_BACK_RANGE']/res
 dy = config['LIDAR_SIDE_RANGE']/res
@@ -45,14 +45,13 @@ def process_img(path):
 
 
 
-def extract_traj(lidar_dir_path, init_idx, poses, traj_len):
+def extract_traj(objects, init_idx, poses, traj_len):
     init_pos = poses[0]
     init_pose_mat_inv = np.linalg.pinv(get_affine_matrix_quat(init_pos[0], init_pos[1], init_pos[2]))
     objs_traj = []
 
     for ts in range(init_idx, init_idx + traj_len):
-        img_path = os.path.join(lidar_dir_path, f"{ts}.png")
-        objs = process_img(img_path)
+        objs = objects[ts]
         if(len(objs) == 0):
             continue
 
@@ -95,7 +94,7 @@ def extract_traj(lidar_dir_path, init_idx, poses, traj_len):
         dist = []
         for i in range(len(traj)):
             dist.append(math.dist(traj[0], traj[i]))
-        if np.std(dist) > 0.25:
+        if np.std(dist) > 1.00:
             mov_obj_traj.append(traj[0:traj_len])
 
     return mov_obj_traj
@@ -110,10 +109,10 @@ if __name__ == "__main__":
     #print(traj)
 
     traj_len = 50
-    train_bags = "../data/train_bags"
-    val_bags = "../data/val_bags"
+    train_bags = "../data2/train_bags"
+    val_bags = "../data2/val_bags"
 
-    save_data_path = "../data"
+    save_data_path = "../data2"
     bags = os.listdir(train_bags) + os.listdir(val_bags)
     for rosbag_path in bags:
         print(f"{rosbag_path} moving object extraction begin")
@@ -125,11 +124,19 @@ if __name__ == "__main__":
 
         if not os.path.exists(mov_obj_dir_path):
             os.makedirs(mov_obj_dir_path)
+        
+        #process all images
+        print("Processing images!!!!")
+        objects = []
+        for ts in tqdm(range(num_of_lidar_img)):
+            img_path = os.path.join(lidar_dir_path, f"{ts}.png")
+            objs = process_img(img_path)
+            objects.append(objs)
 
         for idx in tqdm(range(num_of_lidar_img)):
             traj_len = min(50, num_of_lidar_img - idx)
             poses = pose_data['pose_sync'][idx:idx+traj_len]
-            curr_traj = extract_traj(lidar_dir_path, idx, poses, traj_len)
+            curr_traj = extract_traj(objects, idx, poses, traj_len)
             mov_obj_data_path = os.path.join(mov_obj_dir_path, f"{idx}.pkl")
             pickle.dump(curr_traj, open(mov_obj_data_path, 'wb'))
         

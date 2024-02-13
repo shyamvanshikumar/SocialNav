@@ -55,37 +55,40 @@ class CollLoss(nn.Module):
     def forward(self, pred_rob_traj, mot_traj, num_obj):
         if not self.sparse_mot:
             mot_traj = mot_traj[:,5::5]
-        # loss = 0
-        # for i in range(num_obj):
-        #     for j in range(len(pred_rob_traj)):
-        #         if math.dist(pred_rob_traj[j], mot_traj[i][j]) <= 1:
-        #             loss += 1
+        loss = 0
+
+        for i in range(len(pred_rob_traj)):
+            for j in range(len(num_obj)):
+                for k in range(len(mot_traj[j])):
+                    if math.dist(pred_rob_traj[i], mot_traj[j][k] <= 0.376):
+                        loss += 1
+
 
         # loss = 0
         # for i in range(num_obj):
         #     dist = cdist(pred_rob_traj.to('cpu').detach(), mot_traj[i].to('cpu').detach())
         #     loss += np.trace(dist)
 
-        loss = 0.0
-        pred_rob_traj = pred_rob_traj.to('cpu').detach().numpy()
-        for i in range(num_obj):
-            mot_traj_np = mot_traj[i].to('cpu').detach().numpy()
+        # loss = 0.0
+        # pred_rob_traj = pred_rob_traj.to('cpu').detach().numpy()
+        # for i in range(num_obj):
+        #     mot_traj_np = mot_traj[i].to('cpu').detach().numpy()
 
-            try:
-                hull = ConvexHull(mot_traj_np)
-                points = hull.points
-                for ri in range(len(pred_rob_traj)):
-                    dists = []
-                    p = pred_rob_traj[ri]
-                    for i in range(len(points)-1):
-                        distance = dist_line_point(points[i][0],points[i][1],points[i+1][0],points[i+1][1],p[0],p[1])
-                        dists.append(distance)
-                        if math.isnan(distance):
-                            print(points[i][0],points[i][1],points[i+1][0],points[i+1][1],p[0],p[1])
-                    curr_min = min(dists)
-                    loss = min(loss, curr_min)
-            except:
-                loss += 0.0
+        #     try:
+        #         hull = ConvexHull(mot_traj_np)
+        #         points = hull.points
+        #         for ri in range(len(pred_rob_traj)):
+        #             dists = []
+        #             p = pred_rob_traj[ri]
+        #             for i in range(len(points)-1):
+        #                 distance = dist_line_point(points[i][0],points[i][1],points[i+1][0],points[i+1][1],p[0],p[1])
+        #                 dists.append(distance)
+        #                 if math.isnan(distance):
+        #                     print(points[i][0],points[i][1],points[i+1][0],points[i+1][1],p[0],p[1])
+        #             curr_min = min(dists)
+        #             loss = min(loss, curr_min)
+        #     except:
+        #         loss += 0.0
         return loss
 
 class AttnNav(pl.LightningModule):
@@ -262,10 +265,10 @@ class AttnNav(pl.LightningModule):
         pose_out = self.rob_decoder(enc_output[:,1:], pose)
         #print(rgb_enc_out)
         #print(lidar_enc_out)
-        print(pose)
+        #print(pose)
         for ts in range(0,seq_len-2):
             dec_output = self.rob_decoder(enc_output[:,1:], gen_seq[:,:ts+1])
-            print(dec_output)
+            #print(dec_output)
             gen_seq[:,ts+1] = dec_output[:,-1]
         
         return gen_seq, pose_out, enc_output
